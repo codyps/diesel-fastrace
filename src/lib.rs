@@ -7,9 +7,6 @@
 use diesel::connection::{Instrumentation, InstrumentationEvent, set_default_instrumentation};
 use diesel::result::{ConnectionError, DatabaseErrorInformation, DatabaseErrorKind, Error};
 use fastrace::{Event, Span};
-use opentelemetry::metrics::Counter;
-use opentelemetry::{KeyValue, global};
-use std::sync::OnceLock;
 use url::Url;
 
 /// Instruments one Diesel connection with OpenTelemetry-compatible fastrace query spans.
@@ -119,17 +116,6 @@ impl FastraceInstrumentation {
         if let Some(command) = self.pending_transaction.take() {
             self.finish_transaction_command(command, error);
         }
-    }
-
-    fn record_prepared_statement_cache_insertion(&self) {
-        static PREPARATIONS: OnceLock<Counter<u64>> = OnceLock::new();
-        let preparations = PREPARATIONS.get_or_init(|| {
-            global::meter("diesel-fastrace")
-                .u64_counter("diesel.statement_cache.preparations")
-                .with_description("Statements added to Diesel's per-connection prepared cache")
-                .build()
-        });
-        preparations.add(1, &metric_attributes(&self.properties));
     }
 
     fn start_transaction_command(&mut self, action: TransactionAction, depth: u32) {
@@ -272,7 +258,6 @@ impl Instrumentation for FastraceInstrumentation {
                 }
             }
             InstrumentationEvent::CacheQuery { .. } => {
-                self.record_prepared_statement_cache_insertion();
                 if let Some(span) = self.active_query.as_ref() {
                     span.add_property(|| ("db.query.prepared_cache_inserted", "true"));
                     span.add_event(Event::new("PostgreSQL prepared statement cached"));
@@ -306,19 +291,6 @@ fn properties_with_operation(
                 (*key, value.clone())
             }
         })
-        .collect()
-}
-
-fn metric_attributes(properties: &[(&'static str, String)]) -> Vec<KeyValue> {
-    properties
-        .iter()
-        .filter(|(key, _)| {
-            matches!(
-                *key,
-                "db.system.name" | "db.namespace" | "server.address" | "server.port"
-            )
-        })
-        .map(|(key, value)| KeyValue::new(*key, value.clone()))
         .collect()
 }
 
@@ -531,11 +503,6 @@ mod tests {
         assert!(properties.contains(&("server.port", "5433".to_owned())));
         assert!(!format!("{properties:?}").contains("alice"));
         assert!(!format!("{properties:?}").contains("secret"));
-
-        let metric_attributes = metric_attributes(&properties);
-        assert_eq!(metric_attributes.len(), 4);
-        assert!(!format!("{metric_attributes:?}").contains("alice"));
-        assert!(!format!("{metric_attributes:?}").contains("secret"));
     }
 
     #[test]

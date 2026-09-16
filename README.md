@@ -10,7 +10,7 @@ fn main() -> diesel::QueryResult<()> {
 }
 ```
 
-Configure a fastrace reporter and parent span in your application. Connection and query spans describe database/network metadata, error categories and schema identifiers. Nested transactions get lifetime spans; cache insertions emit events and an OpenTelemetry counter. Configure the global OpenTelemetry meter provider before the first cache insertion.
+Configure a fastrace reporter and parent span in your application. Connection and query spans describe database/network metadata, error categories and schema identifiers. Nested transactions get lifetime spans; cache insertions emit fastrace events.
 
 Query spans record SQL and bind arguments in `db.query.text`, using Diesel's display format, for example `SELECT $1 -- binds: [42]`. Query capture is enabled by default. Database, host, table, column and constraint names are also recorded.
 

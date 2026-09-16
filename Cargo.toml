@@ -12,7 +12,6 @@ categories = ["database", "development-tools::debugging"]
 [dependencies]
 diesel = { version = "2.3.0", default-features = false }
 fastrace = { version = "0.7.19", features = ["enable"] }
-opentelemetry = { version = "0.32.0", features = ["metrics"] }
 url = "2.5.4"
 
 [dev-dependencies]
