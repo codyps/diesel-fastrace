@@ -109,11 +109,15 @@ def main():
     if not ci_passed(runs, jobs):
         print("Latest CI run must pass Quality and Test")
         return
+    # GITHUB_TOKEN PR events may have an approval-pending duplicate CI run.
+    # The explicitly dispatched CI above must succeed on this exact head.
+    # GitHub still enforces required checks and branch rules at merge time.
     current = api(f"{root}/pulls/{pr['number']}")
     if (current["state"] != "open" or current["draft"]
             or current["head"]["sha"] != sha or current["base"]["sha"] != pr["base"]["sha"]
             or not release_pr(current, repository, branch)
-            or current["mergeable_state"] != "clean"):
+            or not current["mergeable"]
+            or current["mergeable_state"] not in {"clean", "unstable"}):
         print("PR changed or GitHub has not confirmed it is cleanly mergeable")
         return
     reason = holdoff(current)
