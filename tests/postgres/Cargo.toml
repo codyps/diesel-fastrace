@@ -1,0 +1,15 @@
+[package]
+name = "diesel-fastrace-postgres-tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+diesel-fastrace = { path = "../.." }
+diesel = { version = "2.3.0", default-features = false, features = ["postgres"] }
+fastrace = { version = "0.7.19", features = ["enable"] }
+url = "2.5.4"
+
+[[test]]
+name = "postgres"
+path = "postgres.rs"
