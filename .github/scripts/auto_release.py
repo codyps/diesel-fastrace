@@ -50,7 +50,7 @@ def release_pr(pr, repository, branch):
 def cooldown_reason(releases, closed_prs, now, pr_date):
     published = [timestamp(r["published_at"]) for r in releases
                  if not r["draft"] and not r["prerelease"]
-                 and r["tag_name"].startswith("diesel-fastrace-") and r["published_at"]]
+                 and r["tag_name"].startswith("fastrace-diesel-") and r["published_at"]]
     latest = max(published) if published else datetime.min.replace(tzinfo=timezone.utc)
     if any(p["merged_at"] and timestamp(p["merged_at"]) > latest for p in closed_prs):
         return "A merged release PR is still awaiting publication"
@@ -73,9 +73,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--merge", action="store_true", help="Perform the eligible merge")
     args = parser.parse_args()
-    repository = os.environ.get("GITHUB_REPOSITORY", "codyps/diesel-fastrace")
-    if repository != "codyps/diesel-fastrace":
-        raise RuntimeError("Automatic releases are only configured for codyps/diesel-fastrace")
+    repository = os.environ.get("GITHUB_REPOSITORY", "codyps/fastrace-diesel")
+    if repository != "codyps/fastrace-diesel":
+        raise RuntimeError("Automatic releases are only configured for codyps/fastrace-diesel")
     root = f"repos/{repository}"
     branch = api(root)["default_branch"]
 

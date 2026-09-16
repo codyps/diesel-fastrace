@@ -118,7 +118,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "diesel-fastrace"
+name = "fastrace-diesel"
 version = "0.1.2"
 dependencies = [
  "diesel",
@@ -127,41 +127,41 @@ dependencies = [
 ]
 
 [[package]]
-name = "diesel-fastrace-mixed-tests"
+name = "fastrace-diesel-mixed-tests"
 version = "0.0.0"
 dependencies = [
  "diesel",
- "diesel-fastrace",
+ "fastrace-diesel",
  "fastrace",
  "url",
 ]
 
 [[package]]
-name = "diesel-fastrace-mysql-tests"
+name = "fastrace-diesel-mysql-tests"
 version = "0.0.0"
 dependencies = [
  "diesel",
- "diesel-fastrace",
+ "fastrace-diesel",
  "fastrace",
  "url",
 ]
 
 [[package]]
-name = "diesel-fastrace-postgres-tests"
+name = "fastrace-diesel-postgres-tests"
 version = "0.0.0"
 dependencies = [
  "diesel",
- "diesel-fastrace",
+ "fastrace-diesel",
  "fastrace",
  "url",
 ]
 
 [[package]]
-name = "diesel-fastrace-sqlite-tests"
+name = "fastrace-diesel-sqlite-tests"
 version = "0.0.0"
 dependencies = [
  "diesel",
- "diesel-fastrace",
+ "fastrace-diesel",
  "fastrace",
  "url",
 ]

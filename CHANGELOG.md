@@ -2,13 +2,17 @@
 
 ## [Unreleased]
 
-## [0.1.2](https://github.com/codyps/diesel-fastrace/compare/diesel-fastrace-0.1.1...diesel-fastrace-0.1.2) - 2026-09-16
+### Changed
+
+- Rename the crate to `fastrace-diesel` and the Rust import to `fastrace_diesel`.
+
+## [0.1.2](https://github.com/codyps/fastrace-diesel/compare/diesel-fastrace-0.1.1...diesel-fastrace-0.1.2) - 2026-09-16
 
 ### Added
 
 - add a generic instrumentation installer for all backends
 
-## [0.1.1](https://github.com/codyps/diesel-fastrace/compare/diesel-fastrace-0.1.0...diesel-fastrace-0.1.1) - 2026-09-16
+## [0.1.1](https://github.com/codyps/fastrace-diesel/compare/diesel-fastrace-0.1.0...diesel-fastrace-0.1.1) - 2026-09-16
 
 ### Added
 

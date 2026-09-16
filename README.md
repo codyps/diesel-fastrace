@@ -1,10 +1,10 @@
-# diesel-fastrace
+# fastrace-diesel
 
 fastrace tracing for Diesel queries on PostgreSQL, MySQL, and SQLite.
 
 ```rust
 fn main() -> diesel::QueryResult<()> {
-    diesel_fastrace::install_default_instrumentation()?;
+    fastrace_diesel::install_default_instrumentation()?;
     // Establish Diesel connections to any supported backend after installing.
     Ok(())
 }
@@ -30,7 +30,7 @@ Query spans record SQL and bind arguments in `db.query.text`, using Diesel's dis
 Disable SQL and argument capture with the builder-style option:
 
 ```rust
-use diesel_fastrace::FastraceInstrumentation;
+use fastrace_diesel::FastraceInstrumentation;
 
 diesel::connection::set_default_instrumentation(|| {
     Some(Box::new(
@@ -49,9 +49,9 @@ The workspace consumer crates run a shared tracing suite against real Diesel con
 
 ```sh
 cargo test --manifest-path tests/sqlite/Cargo.toml --locked
-DIESEL_FASTRACE_TEST_DATABASE_URL=postgres://localhost/diesel_fastrace_test \
+FASTRACE_DIESEL_TEST_DATABASE_URL=postgres://localhost/fastrace_diesel_test \
   cargo test --manifest-path tests/postgres/Cargo.toml --locked
-DIESEL_FASTRACE_TEST_MYSQL_URL=mysql://tester:password@127.0.0.1/diesel_fastrace_test \
+FASTRACE_DIESEL_TEST_MYSQL_URL=mysql://tester:password@127.0.0.1/fastrace_diesel_test \
   cargo test --manifest-path tests/mysql/Cargo.toml --locked
 # With both server URL variables set:
 cargo test --manifest-path tests/mixed/Cargo.toml --locked
@@ -65,4 +65,4 @@ Release-plz creates release PRs; merging one publishes to crates.io and creates 
 
 Automation uses the repository GITHUB_TOKEN and explicitly dispatches CI and publishing workflows. No personal GitHub token is needed. The automatic release workflow defaults to a read-only preview when run manually.
 
-Publishing uses crates.io trusted publishing (GitHub Actions OIDC), bound to `codyps/diesel-fastrace` and `.github/workflows/release-plz.yml`, with no GitHub environment. The publishing job has `id-token: write`; release-plz exchanges the job identity for a short-lived crates.io token. No `CARGO_REGISTRY_TOKEN` secret or environment variable is used.
+After the first manual publication of `fastrace-diesel`, configure its crates.io trusted publisher for the repository and workflow below. Subsequent publishing uses crates.io trusted publishing (GitHub Actions OIDC), bound to `codyps/fastrace-diesel` and `.github/workflows/release-plz.yml`, with no GitHub environment. The publishing job has `id-token: write`; release-plz exchanges the job identity for a short-lived crates.io token. No `CARGO_REGISTRY_TOKEN` secret or environment variable is used.

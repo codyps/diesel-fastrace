@@ -7,7 +7,7 @@ release_always = false
 semver_check = true
 
 [[package]]
-name = "diesel-fastrace"
+name = "fastrace-diesel"
 changelog_path = "CHANGELOG.md"
 publish = true
 publish_all_features = true

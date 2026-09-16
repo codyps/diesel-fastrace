@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   auto-release:
-    if: github.repository == 'codyps/diesel-fastrace' && github.ref == 'refs/heads/main'
+    if: github.repository == 'codyps/fastrace-diesel' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

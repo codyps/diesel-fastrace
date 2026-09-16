@@ -4,12 +4,12 @@ default-members = ["."]
 resolver = "2"
 
 [package]
-name = "diesel-fastrace"
+name = "fastrace-diesel"
 version = "0.1.2"
 edition = "2024"
 description = "fastrace tracing for Diesel queries"
 license = "MPL-2.0"
-repository = "https://github.com/codyps/diesel-fastrace"
+repository = "https://github.com/codyps/fastrace-diesel"
 readme = "README.md"
 exclude = ["tests"]
 keywords = ["diesel", "fastrace", "postgres", "tracing"]

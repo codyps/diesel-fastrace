@@ -1,11 +1,11 @@
 use diesel::sql_types::{Integer, Text};
-use diesel_fastrace::FastraceInstrumentation;
+use fastrace_diesel::FastraceInstrumentation;
 type TestConnection = diesel::SqliteConnection;
 const BACKEND: &str = "SQLite";
 const SYSTEM: &str = "sqlite";
 const BOUND_SQL: &str = "SELECT ?, ?";
 const CREATE_TABLE: &str = "CREATE TEMPORARY TABLE trace_items (id INTEGER PRIMARY KEY)";
-use diesel_fastrace::install_default_sqlite_instrumentation as install_default;
+use fastrace_diesel::install_default_sqlite_instrumentation as install_default;
 fn instrumentation(url: &str) -> FastraceInstrumentation {
     FastraceInstrumentation::sqlite(url)
 }
@@ -13,7 +13,7 @@ fn database_url() -> String {
     ":memory:".to_owned()
 }
 fn invalid_database_url(_: &str) -> String {
-    "file:/diesel-fastrace-nonexistent-directory/database.sqlite?mode=ro".to_owned()
+    "file:/fastrace-diesel-nonexistent-directory/database.sqlite?mode=ro".to_owned()
 }
 include!("../common/suite.rs");
 
@@ -61,7 +61,7 @@ fn file_database_can_be_reopened_via_uri() {
         .unwrap()
         .as_nanos();
     let dir = TemporaryDirectory(
-        std::env::temp_dir().join(format!("diesel-fastrace-{}-{unique}", std::process::id())),
+        std::env::temp_dir().join(format!("fastrace-diesel-{}-{unique}", std::process::id())),
     );
     std::fs::create_dir(&dir.0).unwrap();
     let file = dir.0.join("test.db");

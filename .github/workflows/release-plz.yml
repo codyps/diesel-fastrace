@@ -13,7 +13,7 @@ jobs:
     name: Publish release
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    if: github.repository == 'codyps/diesel-fastrace' && github.ref == 'refs/heads/main'
+    if: github.repository == 'codyps/fastrace-diesel' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
       id-token: write
@@ -43,7 +43,7 @@ jobs:
     name: Prepare release PR
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    if: github.repository == 'codyps/diesel-fastrace' && github.ref == 'refs/heads/main'
+    if: github.repository == 'codyps/fastrace-diesel' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
       pull-requests: write
