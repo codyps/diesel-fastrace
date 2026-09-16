@@ -1,6 +1,6 @@
 # diesel-fastrace
 
-Native fastrace instrumentation for Diesel PostgreSQL connections, with OpenTelemetry-compatible metadata and a prepared-statement cache counter.
+fastrace tracing for Diesel PostgreSQL queries.
 
 ```rust
 fn main() -> diesel::QueryResult<()> {
@@ -12,7 +12,21 @@ fn main() -> diesel::QueryResult<()> {
 
 Configure a fastrace reporter and parent span in your application. Connection and query spans describe database/network metadata, error categories and schema identifiers. Nested transactions get lifetime spans; cache insertions emit events and an OpenTelemetry counter. Configure the global OpenTelemetry meter provider before the first cache insertion.
 
-SQL text, bind values, credentials and free-form database errors are never recorded. Database, host, table, column and constraint names are recorded.
+Query spans record SQL and bind arguments in `db.query.text`, using Diesel's display format, for example `SELECT $1 -- binds: [42]`. Query capture is enabled by default. Database, host, table, column and constraint names are also recorded.
+
+Disable SQL and argument capture with the builder-style option:
+
+```rust
+use diesel_fastrace::FastraceInstrumentation;
+
+diesel::connection::set_default_instrumentation(|| {
+    Some(Box::new(
+        FastraceInstrumentation::postgres("").with_query_capture(false),
+    ))
+})?;
+```
+
+Install this factory before establishing connections. Disabling capture keeps query timing, error metadata, and transaction spans. SQL and arguments are controlled together because Diesel provides them as one formatted value.
 
 ## Development
 

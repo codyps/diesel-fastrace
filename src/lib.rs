@@ -1,9 +1,8 @@
-//! Native fastrace instrumentation for Diesel connections.
+//! fastrace tracing for Diesel PostgreSQL queries.
 //!
-//! Query text and bind values are deliberately not collected: they can contain credentials,
-//! collaboration tokens, and other user data. The emitted client spans contain only the stable
-//! database and network metadata needed to classify the dependency in an OpenTelemetry service
-//! graph.
+//! Query spans record SQL and bind arguments in `db.query.text` using Diesel's display
+//! format by default. Use [`FastraceInstrumentation::with_query_capture`] to disable
+//! capture. Connection and transaction spans include database and network metadata.
 
 use diesel::connection::{Instrumentation, InstrumentationEvent, set_default_instrumentation};
 use diesel::result::{ConnectionError, DatabaseErrorInformation, DatabaseErrorKind, Error};
@@ -15,6 +14,7 @@ use url::Url;
 
 /// Instruments one Diesel connection with OpenTelemetry-compatible fastrace query spans.
 pub struct FastraceInstrumentation {
+    capture_queries: bool,
     active_connection: Option<Span>,
     active_query: Option<Span>,
     properties: Vec<(&'static str, String)>,
@@ -26,12 +26,29 @@ impl FastraceInstrumentation {
     /// Creates PostgreSQL instrumentation from a connection URL without retaining credentials.
     pub fn postgres(database_url: &str) -> Self {
         Self {
+            capture_queries: true,
             active_connection: None,
             active_query: None,
             properties: postgres_properties(database_url, "QUERY"),
             transactions: Vec::new(),
             pending_transaction: None,
         }
+    }
+
+    /// Enables or disables capture of SQL and bind arguments. Enabled by default.
+    ///
+    /// Diesel exposes SQL and arguments together, so this option controls both.
+    /// Disabling capture preserves query timing, errors, and transaction spans.
+    ///
+    /// ```
+    /// use diesel_fastrace::FastraceInstrumentation;
+    /// let instrumentation = FastraceInstrumentation::postgres("postgres:///example_db")
+    ///     .with_query_capture(false);
+    /// ```
+    #[must_use]
+    pub fn with_query_capture(mut self, enabled: bool) -> Self {
+        self.capture_queries = enabled;
+        self
     }
 
     fn postgres_without_url() -> Self {
@@ -236,7 +253,24 @@ impl Instrumentation for FastraceInstrumentation {
             InstrumentationEvent::FinishEstablishConnection { error, .. } => {
                 self.finish_connection(error);
             }
-            InstrumentationEvent::StartQuery { .. } => self.start_query(),
+            InstrumentationEvent::StartQuery { query, .. } => {
+                self.start_query();
+                if self.capture_queries
+                    && let Some(span) = self.active_query.as_ref()
+                {
+                    span.add_properties(|| {
+                        use std::fmt::Write;
+                        let mut text = String::new();
+                        // A query that fails to build can also fail to format. Instrumentation
+                        // must not turn Diesel's query error into a formatting panic.
+                        if write!(&mut text, "{query}").is_ok() {
+                            Some(("db.query.text", text))
+                        } else {
+                            None
+                        }
+                    });
+                }
+            }
             InstrumentationEvent::CacheQuery { .. } => {
                 self.record_prepared_statement_cache_insertion();
                 if let Some(span) = self.active_query.as_ref() {
@@ -294,8 +328,7 @@ fn postgres_properties(database_url: &str, operation: &str) -> Vec<(&'static str
         // Keep both the stable semantic-convention name and Uptrace's legacy-compatible key.
         ("db.system.name", "postgresql".to_owned()),
         ("db.system", "postgresql".to_owned()),
-        // Diesel does not expose a structured operation without formatting the query. Keep the
-        // operation generic rather than collecting SQL just to distinguish SELECT/INSERT/etc.
+        // Diesel does not expose a structured operation for ordinary queries.
         ("db.operation.name", operation.to_owned()),
     ];
 
@@ -400,6 +433,90 @@ fn connection_error_type(error: &ConnectionError) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn query_events_record_sql_and_arguments_on_each_span() {
+        use diesel::pg::Pg;
+        use diesel::sql_types::{Integer, Text};
+        use fastrace::collector::{Config, SpanContext, TestReporter};
+
+        let (reporter, records) = TestReporter::new();
+        fastrace::set_reporter(reporter, Config::default());
+        {
+            let root = Span::root("query tracing test", SpanContext::random());
+            let _parent = root.set_local_parent();
+            let mut instrumentation = FastraceInstrumentation::postgres("postgres:///example_db");
+            for (number, argument) in [
+                (42, "first 'argument'"),
+                (7, "second -- binds: [value]\nline"),
+            ] {
+                let query = diesel::sql_query("SELECT $1, $2")
+                    .bind::<Integer, _>(number)
+                    .bind::<Text, _>(argument);
+                let debug = diesel::debug_query::<Pg, _>(&query);
+                instrumentation.on_connection_event(InstrumentationEvent::start_query(&debug));
+                instrumentation
+                    .on_connection_event(InstrumentationEvent::finish_query(&debug, None));
+            }
+            let mut disabled = FastraceInstrumentation::postgres("postgres:///example_db")
+                .with_query_capture(false);
+            disabled.on_connection_event(InstrumentationEvent::start_query(&NeverFormatQuery));
+            disabled
+                .on_connection_event(InstrumentationEvent::finish_query(&NeverFormatQuery, None));
+            // Re-enabling capture restores the query attribute.
+            disabled = disabled.with_query_capture(true);
+            let query = diesel::sql_query("SELECT 1");
+            let debug = diesel::debug_query::<Pg, _>(&query);
+            disabled.on_connection_event(InstrumentationEvent::start_query(&debug));
+            disabled.on_connection_event(InstrumentationEvent::finish_query(&debug, None));
+            // Broken query formatting must not panic or leave a partial SQL attribute.
+            let broken = BrokenQuery;
+            instrumentation.on_connection_event(InstrumentationEvent::start_query(&broken));
+            instrumentation.on_connection_event(InstrumentationEvent::finish_query(&broken, None));
+        }
+        fastrace::flush();
+        let records = records.lock();
+        let queries: Vec<_> = records
+            .iter()
+            .filter(|s| s.name == "PostgreSQL query")
+            .collect();
+        assert_eq!(queries.len(), 5);
+        let texts: Vec<_> = queries
+            .iter()
+            .flat_map(|s| s.properties.iter())
+            .filter(|(key, _)| key == "db.query.text")
+            .map(|(_, value)| value.as_ref())
+            .collect();
+        assert_eq!(texts.len(), 3);
+        assert!(texts.contains(&"SELECT 1 -- binds: []"));
+        assert!(texts.contains(&"SELECT $1, $2 -- binds: [42, \"first 'argument'\"]"));
+        assert!(
+            texts.contains(&"SELECT $1, $2 -- binds: [7, \"second -- binds: [value]\\nline\"]")
+        );
+    }
+
+    #[derive(Debug)]
+    struct NeverFormatQuery;
+
+    impl std::fmt::Display for NeverFormatQuery {
+        fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            panic!("disabled query capture must not format SQL or arguments")
+        }
+    }
+
+    impl diesel::connection::DebugQuery for NeverFormatQuery {}
+
+    #[derive(Debug)]
+    struct BrokenQuery;
+
+    impl std::fmt::Display for BrokenQuery {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("partial query")?;
+            Err(std::fmt::Error)
+        }
+    }
+
+    impl diesel::connection::DebugQuery for BrokenQuery {}
 
     #[test]
     fn postgres_metadata_excludes_credentials_and_includes_graph_attributes() {

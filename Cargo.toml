@@ -2,7 +2,7 @@
 name = "diesel-fastrace"
 version = "0.1.0"
 edition = "2024"
-description = "Privacy-conscious fastrace instrumentation for Diesel PostgreSQL connections"
+description = "fastrace tracing for Diesel PostgreSQL queries"
 license = "MPL-2.0"
 repository = "https://github.com/codyps/diesel-fastrace"
 readme = "README.md"
@@ -14,3 +14,6 @@ diesel = { version = "2.3.0", default-features = false }
 fastrace = { version = "0.7.19", features = ["enable"] }
 opentelemetry = { version = "0.32.0", features = ["metrics"] }
 url = "2.5.4"
+
+[dev-dependencies]
+diesel = { version = "2.3.0", default-features = false, features = ["postgres_backend", "i-implement-a-third-party-backend-and-opt-into-breaking-changes"] }
