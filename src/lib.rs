@@ -115,7 +115,7 @@ impl FastraceInstrumentation {
     /// Disabling capture preserves query timing, errors, and transaction spans.
     ///
     /// ```
-    /// use diesel_fastrace::FastraceInstrumentation;
+    /// use fastrace_diesel::FastraceInstrumentation;
     /// let instrumentation = FastraceInstrumentation::postgres("postgres:///example_db")
     ///     .with_query_capture(false);
     /// ```

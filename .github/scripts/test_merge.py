@@ -10,11 +10,11 @@ import auto_release as release
 class AutoReleaseTests(unittest.TestCase):
     def setUp(self):
         self.published = [{"draft": False, "prerelease": False,
-                           "tag_name": "diesel-fastrace-0.4.0", "published_at": "2026-08-26T01:18:23Z"}]
+                           "tag_name": "fastrace-diesel-0.4.0", "published_at": "2026-08-26T01:18:23Z"}]
         self.pr = {
             "number": 2, "state": "open", "draft": False, "user": {"login": "github-actions[bot]"},
             "head": {"ref": "release-plz-next", "sha": "checked-sha",
-                     "repo": {"full_name": "codyps/diesel-fastrace"}},
+                     "repo": {"full_name": "codyps/fastrace-diesel"}},
             "base": {"ref": "main", "sha": "base-sha"}, "mergeable_state": "clean", "mergeable": True, "created_at": "2026-01-01T00:00:00Z",
         }
         self.runs = [{"id": 10, "status": "completed", "conclusion": "success"}]
@@ -22,11 +22,11 @@ class AutoReleaseTests(unittest.TestCase):
                      for name in release.REQUIRED_JOBS]
 
     def test_release_pr_must_be_same_repository_and_default_branch(self):
-        self.assertTrue(release.release_pr(self.pr, "codyps/diesel-fastrace", "main"))
-        self.pr["head"]["repo"]["full_name"] = "someone/diesel-fastrace"
-        self.assertFalse(release.release_pr(self.pr, "codyps/diesel-fastrace", "main"))
+        self.assertTrue(release.release_pr(self.pr, "codyps/fastrace-diesel", "main"))
+        self.pr["head"]["repo"]["full_name"] = "someone/fastrace-diesel"
+        self.assertFalse(release.release_pr(self.pr, "codyps/fastrace-diesel", "main"))
         self.pr["head"]["repo"] = None
-        self.assertFalse(release.release_pr(self.pr, "codyps/diesel-fastrace", "main"))
+        self.assertFalse(release.release_pr(self.pr, "codyps/fastrace-diesel", "main"))
 
     def test_missing_skipped_or_failed_checks_block(self):
         self.assertTrue(release.ci_passed(self.runs, self.jobs))
@@ -41,7 +41,7 @@ class AutoReleaseTests(unittest.TestCase):
         self.assertFalse(release.ci_passed(self.runs, self.jobs))
 
     def run_main(self, merge=True, changed=False, unsafe_file=False, held=False):
-        root = "repos/codyps/diesel-fastrace"
+        root = "repos/codyps/fastrace-diesel"
         reads = {
             root: {"default_branch": "main"}, "user": {"login": "github-actions[bot]"},
             f"{root}/pulls/2": self.pr,
@@ -71,7 +71,7 @@ class AutoReleaseTests(unittest.TestCase):
               patch.object(release, "pages", side_effect=lambda endpoint, key=None:
                            collections.get(endpoint, [])),
               patch.object(release, "cooldown_reason", return_value="Hold-off" if held else None),
-              patch.dict("os.environ", {"GITHUB_REPOSITORY": "codyps/diesel-fastrace"}),
+              patch.dict("os.environ", {"GITHUB_REPOSITORY": "codyps/fastrace-diesel"}),
               patch("sys.argv", ["auto_release.py"] + (["--merge"] if merge else [])),
               contextlib.redirect_stdout(io.StringIO())):
             release.main()
@@ -79,7 +79,7 @@ class AutoReleaseTests(unittest.TestCase):
 
     def test_merge_pins_examined_sha_and_preserves_release_pr_history(self):
         self.assertEqual(self.run_main(), [
-            ("repos/codyps/diesel-fastrace/pulls/2/merge", {"sha": "checked-sha", "merge_method": "merge"})])
+            ("repos/codyps/fastrace-diesel/pulls/2/merge", {"sha": "checked-sha", "merge_method": "merge"})])
 
     def test_preview_never_merges(self):
         self.assertEqual(self.run_main(merge=False), [])

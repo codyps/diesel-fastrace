@@ -1,9 +1,9 @@
 use diesel::connection::{SimpleConnection, set_default_instrumentation};
 use diesel::prelude::*;
 use diesel::result::Error;
-use diesel_fastrace::{FastraceInstrumentation, install_default_instrumentation};
 use fastrace::Span;
 use fastrace::collector::{Config, Reporter, SpanContext, SpanRecord};
+use fastrace_diesel::{FastraceInstrumentation, install_default_instrumentation};
 use std::sync::{Arc, Mutex};
 
 struct Capture(Arc<Mutex<Vec<SpanRecord>>>);
@@ -21,8 +21,8 @@ fn property<'a>(span: &'a SpanRecord, key: &str) -> Option<&'a str> {
 
 #[test]
 fn one_factory_traces_all_backends_and_applies_capture_options() {
-    let pg_url = std::env::var("DIESEL_FASTRACE_TEST_DATABASE_URL").expect("PostgreSQL test URL");
-    let mysql_url = std::env::var("DIESEL_FASTRACE_TEST_MYSQL_URL").expect("MySQL test URL");
+    let pg_url = std::env::var("FASTRACE_DIESEL_TEST_DATABASE_URL").expect("PostgreSQL test URL");
+    let mysql_url = std::env::var("FASTRACE_DIESEL_TEST_MYSQL_URL").expect("MySQL test URL");
     let records = Arc::new(Mutex::new(Vec::new()));
     fastrace::set_reporter(Capture(records.clone()), Config::default());
     for enabled in [true, false] {
