@@ -1,0 +1,55 @@
+name: Automatic release
+
+on:
+  schedule:
+    # Poll daily; the script enforces 14 elapsed days, not calendar fortnight dates.
+    - cron: "23 9 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Check eligibility without merging
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  # Share the release PR writer's lock so it cannot update the PR during review.
+  group: release-plz-refs/heads/main
+  cancel-in-progress: false
+
+jobs:
+  auto-release:
+    if: github.repository == 'codyps/diesel-fastrace' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted default branch
+        timeout-minutes: 2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check interval and merge eligible release PR
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          args=()
+          if [[ "$DRY_RUN" != "true" ]]; then
+            args+=(--merge)
+          fi
+          python3 .github/scripts/auto_release.py "${args[@]}"
+
+      - name: Retry or dispatch publishing after an automatic merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          if [[ "$DRY_RUN" != "true" ]]; then
+            gh workflow run release-plz.yml --repo "$GITHUB_REPOSITORY" --ref main
+          fi

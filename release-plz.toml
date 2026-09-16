@@ -1,0 +1,13 @@
+[workspace]
+changelog_update = true
+git_release_enable = true
+git_release_name = "{{ package }} {{ version }}"
+git_tag_name = "{{ package }}-{{ version }}"
+release_always = false
+semver_check = true
+
+[[package]]
+name = "diesel-fastrace"
+changelog_path = "CHANGELOG.md"
+publish = true
+publish_all_features = true
