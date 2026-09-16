@@ -132,3 +132,45 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libmysqlclient-dev
       - run: cargo clippy --locked --manifest-path tests/mysql/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --locked --manifest-path tests/mysql/Cargo.toml
+
+  mixed:
+    name: Mixed backend integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: integration-test
+          POSTGRES_DB: diesel_fastrace_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d diesel_fastrace_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: integration-test
+          MYSQL_DATABASE: diesel_fastrace_test
+          MYSQL_USER: tester
+          MYSQL_PASSWORD: integration-test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DIESEL_FASTRACE_TEST_DATABASE_URL: postgres://postgres:integration-test@localhost:5432/diesel_fastrace_test
+      DIESEL_FASTRACE_TEST_MYSQL_URL: mysql://tester:integration-test@127.0.0.1:3306/diesel_fastrace_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+      - run: sudo apt-get update && sudo apt-get install -y libmysqlclient-dev libpq-dev libsqlite3-dev
+      - run: cargo clippy --locked --manifest-path tests/mixed/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --locked --manifest-path tests/mixed/Cargo.toml

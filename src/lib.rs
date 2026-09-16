@@ -12,6 +12,7 @@ use url::Url;
 /// Instruments one Diesel connection with OpenTelemetry-compatible fastrace query spans.
 pub struct FastraceInstrumentation {
     backend: Backend,
+    infer_backend: bool,
     capture_queries: bool,
     active_connection: Option<Span>,
     active_query: Option<Span>,
@@ -22,6 +23,7 @@ pub struct FastraceInstrumentation {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Backend {
+    Unknown,
     Postgres,
     Mysql,
     Sqlite,
@@ -30,6 +32,7 @@ enum Backend {
 impl Backend {
     fn name(self) -> &'static str {
         match self {
+            Self::Unknown => "Database",
             Self::Postgres => "PostgreSQL",
             Self::Mysql => "MySQL",
             Self::Sqlite => "SQLite",
@@ -38,6 +41,7 @@ impl Backend {
 
     fn system(self) -> &'static str {
         match self {
+            Self::Unknown => "other_sql",
             Self::Postgres => "postgresql",
             Self::Mysql => "mysql",
             Self::Sqlite => "sqlite",
@@ -45,25 +49,57 @@ impl Backend {
     }
 }
 
+impl Default for FastraceInstrumentation {
+    fn default() -> Self {
+        Self::new("")
+    }
+}
+
+fn infer_backend(url: &str) -> Backend {
+    if url.starts_with("postgres://") || url.starts_with("postgresql://") {
+        Backend::Postgres
+    } else if url.starts_with("mysql://") {
+        Backend::Mysql
+    } else if url == ":memory:" || url.starts_with("file:") {
+        Backend::Sqlite
+    } else {
+        Backend::Unknown
+    }
+}
+
 impl FastraceInstrumentation {
+    /// Creates instrumentation that infers the backend from a connection string.
+    ///
+    /// Recognizes PostgreSQL/MySQL URL schemes and SQLite `file:` URIs or `:memory:`.
+    /// Other strings (including bare filenames and libpq keyword strings) produce
+    /// generic database spans without connection-string metadata. Use an explicit
+    /// backend constructor when those strings need backend-specific metadata.
+    /// A connection-establishment event updates the inferred backend automatically.
+    pub fn new(database_url: &str) -> Self {
+        let mut instrumentation = Self::for_backend(infer_backend(database_url), database_url);
+        instrumentation.infer_backend = true;
+        instrumentation
+    }
+
     /// Creates PostgreSQL instrumentation from a connection URL without retaining credentials.
     pub fn postgres(database_url: &str) -> Self {
-        Self::new(Backend::Postgres, database_url)
+        Self::for_backend(Backend::Postgres, database_url)
     }
 
     /// Creates MySQL instrumentation from a connection URL without retaining credentials.
     pub fn mysql(database_url: &str) -> Self {
-        Self::new(Backend::Mysql, database_url)
+        Self::for_backend(Backend::Mysql, database_url)
     }
 
     /// Creates SQLite instrumentation from a filename, file URI, or `:memory:`.
     pub fn sqlite(database_url: &str) -> Self {
-        Self::new(Backend::Sqlite, database_url)
+        Self::for_backend(Backend::Sqlite, database_url)
     }
 
-    fn new(backend: Backend, database_url: &str) -> Self {
+    fn for_backend(backend: Backend, database_url: &str) -> Self {
         Self {
             backend,
+            infer_backend: false,
             capture_queries: true,
             active_connection: None,
             active_query: None,
@@ -94,6 +130,9 @@ impl FastraceInstrumentation {
     }
 
     fn start_connection(&mut self, database_url: &str) {
+        if self.infer_backend {
+            self.backend = infer_backend(database_url);
+        }
         self.properties = database_properties(self.backend, database_url, "QUERY");
         let span = Span::enter_with_local_parent(format!("{} connect", self.backend.name()));
         let properties = database_properties(self.backend, database_url, "CONNECT");
@@ -270,15 +309,26 @@ impl TransactionCommand {
 ///
 /// Installing a default is required to observe connection latency and failed connection attempts;
 /// calling `Connection::set_instrumentation` after `establish` is too late for those events.
-/// The default factory is global; use per-connection instrumentation for mixed backends.
+/// The default factory is global; use [`install_default_instrumentation`] for mixed backends.
 pub fn install_default_postgres_instrumentation() -> diesel::QueryResult<()> {
     set_default_instrumentation(|| Some(Box::new(FastraceInstrumentation::postgres_without_url())))
+}
+
+/// Installs instrumentation for all new Diesel connections, regardless of backend.
+///
+/// Call once before establishing connections. Each connection gets its own state.
+/// Backend metadata is inferred as described by [`FastraceInstrumentation::new`].
+/// For custom capture options, install a factory returning
+/// `FastraceInstrumentation::default().with_query_capture(false)` through Diesel's
+/// `set_default_instrumentation` function.
+pub fn install_default_instrumentation() -> diesel::QueryResult<()> {
+    set_default_instrumentation(|| Some(Box::new(FastraceInstrumentation::default())))
 }
 
 /// Installs instrumentation before Diesel establishes new MySQL connections.
 ///
 /// Diesel's default instrumentation factory is global; installing this replaces any
-/// previously installed factory. For mixed backends, set instrumentation per connection.
+/// previously installed factory. For mixed backends, use [`install_default_instrumentation`].
 pub fn install_default_mysql_instrumentation() -> diesel::QueryResult<()> {
     set_default_instrumentation(|| Some(Box::new(FastraceInstrumentation::mysql(""))))
 }
@@ -286,7 +336,7 @@ pub fn install_default_mysql_instrumentation() -> diesel::QueryResult<()> {
 /// Installs instrumentation before Diesel establishes new SQLite connections.
 ///
 /// Diesel's default instrumentation factory is global; installing this replaces any
-/// previously installed factory. For mixed backends, set instrumentation per connection.
+/// previously installed factory. For mixed backends, use [`install_default_instrumentation`].
 pub fn install_default_sqlite_instrumentation() -> diesel::QueryResult<()> {
     set_default_instrumentation(|| Some(Box::new(FastraceInstrumentation::sqlite(""))))
 }
@@ -371,6 +421,10 @@ fn database_properties(
         // Diesel does not expose a structured operation for ordinary queries.
         ("db.operation.name", operation.to_owned()),
     ];
+
+    if backend == Backend::Unknown {
+        return properties;
+    }
 
     if backend == Backend::Sqlite {
         // SQLite filenames and file URIs describe a local database, not a server.
@@ -493,6 +547,45 @@ fn connection_error_type(error: &ConnectionError) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generic_inference_preserves_explicit_backend_and_handles_unknown_strings() {
+        for (url, expected) in [
+            ("postgres://localhost/db", Backend::Postgres),
+            ("postgresql://localhost/db", Backend::Postgres),
+            ("mysql://localhost/db", Backend::Mysql),
+            (":memory:", Backend::Sqlite),
+            ("file:example.db?mode=ro", Backend::Sqlite),
+            ("relative.db", Backend::Unknown),
+            ("host=localhost password=secret", Backend::Unknown),
+            ("", Backend::Unknown),
+            ("custom://user:secret@host/db", Backend::Unknown),
+        ] {
+            let mut instrumentation = FastraceInstrumentation::default();
+            instrumentation.start_connection(url);
+            assert!(instrumentation.backend == expected);
+            if expected == Backend::Unknown {
+                assert_eq!(instrumentation.backend.name(), "Database");
+                assert!(
+                    !instrumentation
+                        .properties
+                        .iter()
+                        .any(|(k, _)| k.starts_with("server.")
+                            || *k == "db.namespace"
+                            || *k == "db.name")
+                );
+                assert!(!format!("{:?}", instrumentation.properties).contains("secret"));
+            }
+        }
+        // Explicit selection wins even when a SQLite filename resembles another URL.
+        let mut explicit = FastraceInstrumentation::sqlite("");
+        explicit.start_connection("postgres://example.db");
+        assert!(explicit.backend == Backend::Sqlite);
+        let generic =
+            FastraceInstrumentation::new("mysql://localhost/db").with_query_capture(false);
+        assert!(generic.backend == Backend::Mysql);
+        assert!(!generic.capture_queries);
+    }
 
     #[test]
     fn mysql_metadata_uses_mysql_names_and_omits_url_credentials() {

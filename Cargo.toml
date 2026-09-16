@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "tests/postgres", "tests/mysql", "tests/sqlite"]
+members = [".", "tests/postgres", "tests/mysql", "tests/sqlite", "tests/mixed"]
 default-members = ["."]
 resolver = "2"
 

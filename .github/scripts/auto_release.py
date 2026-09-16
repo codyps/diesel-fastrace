@@ -7,7 +7,7 @@ import os
 import subprocess
 
 INTERVAL = timedelta(days=14)
-REQUIRED_JOBS = {"Quality", "Test", "PostgreSQL integration", "MySQL integration", "SQLite integration"}
+REQUIRED_JOBS = {"Quality", "Test", "PostgreSQL integration", "MySQL integration", "SQLite integration", "Mixed backend integration"}
 RELEASE_FILES = {"Cargo.toml", "Cargo.lock", "CHANGELOG.md"}
 
 

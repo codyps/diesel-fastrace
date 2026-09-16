@@ -4,13 +4,16 @@ fastrace tracing for Diesel queries on PostgreSQL, MySQL, and SQLite.
 
 ```rust
 fn main() -> diesel::QueryResult<()> {
-    diesel_fastrace::install_default_postgres_instrumentation()?;
-    // Establish Diesel PostgreSQL connections after installing instrumentation.
+    diesel_fastrace::install_default_instrumentation()?;
+    // Establish Diesel connections to any supported backend after installing.
     Ok(())
 }
 ```
 
-Choose the installer for your backend:
+One installation handles PostgreSQL, MySQL, and SQLite connections together, with independent state for each connection. `FastraceInstrumentation::default()` provides the same automatic behavior for a custom factory; `FastraceInstrumentation::new(url)` works when attaching instrumentation to an existing connection.
+
+Backend inference recognizes `postgres://`, `postgresql://`, `mysql://`, SQLite `file:` URIs, and `:memory:`. Bare filenames, libpq keyword connection strings, and unrecognized strings produce generic `Database` spans (`db.system.name = other_sql`) without connection-string metadata. Queries, arguments, errors, and transactions are still traced. Use explicit selection when you need backend metadata for an ambiguous string:
+
 
 | Backend | Default installer | Per-connection constructor |
 | --- | --- | --- |
@@ -18,7 +21,7 @@ Choose the installer for your backend:
 | MySQL | `install_default_mysql_instrumentation()` | `FastraceInstrumentation::mysql(url)` |
 | SQLite | `install_default_sqlite_instrumentation()` | `FastraceInstrumentation::sqlite(path_or_uri)` |
 
-Diesel has one global default instrumentation factory. For an application using multiple backends, attach the matching instrumentation with `Connection::set_instrumentation`; connection-establishment spans require a default factory installed before connecting. SQLite supports filenames, `file:` URIs, and `:memory:` and does not emit server address or port attributes.
+Diesel has one global default instrumentation factory; installing another replaces it. Use the generic installer for mixed backends. Explicit constructors can also be attached with `Connection::set_instrumentation`, but connection-establishment spans require a factory installed before connecting. Explicit SQLite instrumentation supports filenames, `file:` URIs, and `:memory:` and does not emit server address or port attributes.
 
 Configure a fastrace reporter and parent span in your application. Connection and query spans describe database/network metadata, error categories and schema identifiers. Nested transactions get lifetime spans; cache insertions emit fastrace events.
 
@@ -31,7 +34,7 @@ use diesel_fastrace::FastraceInstrumentation;
 
 diesel::connection::set_default_instrumentation(|| {
     Some(Box::new(
-        FastraceInstrumentation::postgres("").with_query_capture(false),
+        FastraceInstrumentation::default().with_query_capture(false),
     ))
 })?;
 ```
@@ -42,7 +45,7 @@ Install this factory before establishing connections. Disabling capture keeps qu
 
 Run `cargo test`, `cargo clippy --all-targets -- -D warnings`, and `cargo fmt --check`.
 
-The workspace consumer crates run a shared tracing suite against real Diesel connections. They check SQL and arguments, prepared-statement cache events, errors, nested transactions and rollbacks, connection failures, and disabled capture. SQLite additionally tests file URIs and immediate/exclusive transactions.
+The workspace consumer crates run a shared tracing suite against real Diesel connections. They check SQL and arguments, prepared-statement cache events, errors, nested transactions and rollbacks, connection failures, and disabled capture. SQLite additionally tests file URIs and immediate/exclusive transactions. `tests/mixed` opens all three backends under one generic factory, verifying simultaneous transactions and capture options.
 
 ```sh
 cargo test --manifest-path tests/sqlite/Cargo.toml --locked
@@ -50,9 +53,11 @@ DIESEL_FASTRACE_TEST_DATABASE_URL=postgres://localhost/diesel_fastrace_test \
   cargo test --manifest-path tests/postgres/Cargo.toml --locked
 DIESEL_FASTRACE_TEST_MYSQL_URL=mysql://tester:password@127.0.0.1/diesel_fastrace_test \
   cargo test --manifest-path tests/mysql/Cargo.toml --locked
+# With both server URL variables set:
+cargo test --manifest-path tests/mixed/Cargo.toml --locked
 ```
 
-Plain `cargo test` runs the library tests only. Integration tests require the corresponding client libraries (libpq, libmysqlclient, or SQLite). Server tests fail if their URL is missing or the server is unavailable. CI runs PostgreSQL 18, MySQL 8.4, and SQLite integration jobs on pushes and PRs, including release PRs; automatic releases require all three to pass.
+Plain `cargo test` runs the library tests only. Integration tests require the corresponding client libraries (libpq, libmysqlclient, or SQLite). Server tests fail if their URL is missing or the server is unavailable. CI runs PostgreSQL 18, MySQL 8.4, and SQLite integration jobs on pushes and PRs, including release PRs; automatic releases require all three and the mixed-backend suite to pass.
 
 ## Releases
 

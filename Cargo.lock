@@ -127,6 +127,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "diesel-fastrace-mixed-tests"
+version = "0.0.0"
+dependencies = [
+ "diesel",
+ "diesel-fastrace",
+ "fastrace",
+ "url",
+]
+
+[[package]]
 name = "diesel-fastrace-mysql-tests"
 version = "0.0.0"
 dependencies = [
