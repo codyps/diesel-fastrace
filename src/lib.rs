@@ -404,11 +404,11 @@ mod tests {
     #[test]
     fn postgres_metadata_excludes_credentials_and_includes_graph_attributes() {
         let properties =
-            postgres_properties("postgres://alice:secret@postgres:5433/beachout", "QUERY");
+            postgres_properties("postgres://alice:secret@postgres:5433/example_db", "QUERY");
 
         assert!(properties.contains(&("span.kind", "client".to_owned())));
         assert!(properties.contains(&("db.system.name", "postgresql".to_owned())));
-        assert!(properties.contains(&("db.name", "beachout".to_owned())));
+        assert!(properties.contains(&("db.name", "example_db".to_owned())));
         assert!(properties.contains(&("db.operation.name", "QUERY".to_owned())));
         assert!(properties.contains(&("server.address", "postgres".to_owned())));
         assert!(properties.contains(&("server.port", "5433".to_owned())));
@@ -504,7 +504,7 @@ mod tests {
 
     #[test]
     fn transaction_span_stays_open_across_body_queries_until_commit_finishes() {
-        let mut instrumentation = FastraceInstrumentation::postgres("postgres:///beachout");
+        let mut instrumentation = FastraceInstrumentation::postgres("postgres:///example_db");
 
         instrumentation.start_transaction_command(TransactionAction::Begin, 1);
         assert_eq!(instrumentation.transactions.len(), 1);
@@ -524,7 +524,7 @@ mod tests {
 
     #[test]
     fn nested_transaction_span_closes_without_closing_its_parent() {
-        let mut instrumentation = FastraceInstrumentation::postgres("postgres:///beachout");
+        let mut instrumentation = FastraceInstrumentation::postgres("postgres:///example_db");
 
         instrumentation.start_transaction_command(TransactionAction::Begin, 1);
         instrumentation.start_query();
@@ -547,7 +547,7 @@ mod tests {
 
     #[test]
     fn failed_begin_or_transaction_close_does_not_leave_a_span_open() {
-        let mut instrumentation = FastraceInstrumentation::postgres("postgres:///beachout");
+        let mut instrumentation = FastraceInstrumentation::postgres("postgres:///example_db");
         let error = Error::RollbackTransaction;
 
         instrumentation.start_transaction_command(TransactionAction::Begin, 1);

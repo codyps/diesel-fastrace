@@ -14,8 +14,6 @@ Configure a fastrace reporter and parent span in your application. Connection an
 
 SQL text, bind values, credentials and free-form database errors are never recorded. Database, host, table, column and constraint names are recorded.
 
-Extracted from `codyps/beachout`, `crates/diesel-fastrace`, at commit `d3d1e5a9ad4cbc2162952613289de8d64dd8c7b2`.
-
 ## Development
 
 Run `cargo test`, `cargo clippy --all-targets -- -D warnings`, and `cargo fmt --check`.
