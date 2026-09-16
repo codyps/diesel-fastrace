@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "tests/postgres"]
+members = [".", "tests/postgres", "tests/mysql", "tests/sqlite"]
 default-members = ["."]
 resolver = "2"
 
@@ -7,11 +7,11 @@ resolver = "2"
 name = "diesel-fastrace"
 version = "0.1.0"
 edition = "2024"
-description = "fastrace tracing for Diesel PostgreSQL queries"
+description = "fastrace tracing for Diesel queries"
 license = "MPL-2.0"
 repository = "https://github.com/codyps/diesel-fastrace"
 readme = "README.md"
-exclude = ["tests/postgres"]
+exclude = ["tests"]
 keywords = ["diesel", "fastrace", "postgres", "tracing"]
 categories = ["database", "development-tools::debugging"]
 

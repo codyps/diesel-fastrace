@@ -1,6 +1,6 @@
 # diesel-fastrace
 
-fastrace tracing for Diesel PostgreSQL queries.
+fastrace tracing for Diesel queries on PostgreSQL, MySQL, and SQLite.
 
 ```rust
 fn main() -> diesel::QueryResult<()> {
@@ -9,6 +9,16 @@ fn main() -> diesel::QueryResult<()> {
     Ok(())
 }
 ```
+
+Choose the installer for your backend:
+
+| Backend | Default installer | Per-connection constructor |
+| --- | --- | --- |
+| PostgreSQL | `install_default_postgres_instrumentation()` | `FastraceInstrumentation::postgres(url)` |
+| MySQL | `install_default_mysql_instrumentation()` | `FastraceInstrumentation::mysql(url)` |
+| SQLite | `install_default_sqlite_instrumentation()` | `FastraceInstrumentation::sqlite(path_or_uri)` |
+
+Diesel has one global default instrumentation factory. For an application using multiple backends, attach the matching instrumentation with `Connection::set_instrumentation`; connection-establishment spans require a default factory installed before connecting. SQLite supports filenames, `file:` URIs, and `:memory:` and does not emit server address or port attributes.
 
 Configure a fastrace reporter and parent span in your application. Connection and query spans describe database/network metadata, error categories and schema identifiers. Nested transactions get lifetime spans; cache insertions emit fastrace events.
 
@@ -32,14 +42,17 @@ Install this factory before establishing connections. Disabling capture keeps qu
 
 Run `cargo test`, `cargo clippy --all-targets -- -D warnings`, and `cargo fmt --check`.
 
-The `tests/postgres` workspace consumer crate executes real Diesel operations against PostgreSQL and checks the recorded spans, SQL and arguments, cache events, errors, transaction parentage, and disabled capture. Run it with:
+The workspace consumer crates run a shared tracing suite against real Diesel connections. They check SQL and arguments, prepared-statement cache events, errors, nested transactions and rollbacks, connection failures, and disabled capture. SQLite additionally tests file URIs and immediate/exclusive transactions.
 
 ```sh
+cargo test --manifest-path tests/sqlite/Cargo.toml --locked
 DIESEL_FASTRACE_TEST_DATABASE_URL=postgres://localhost/diesel_fastrace_test \
   cargo test --manifest-path tests/postgres/Cargo.toml --locked
+DIESEL_FASTRACE_TEST_MYSQL_URL=mysql://tester:password@127.0.0.1/diesel_fastrace_test \
+  cargo test --manifest-path tests/mysql/Cargo.toml --locked
 ```
 
-Plain `cargo test` runs the library tests only. The integration suite requires PostgreSQL and the libpq development library. It uses per-connection temporary tables and fails if the database URL is missing or PostgreSQL is unavailable. CI provisions PostgreSQL 18 and runs this suite on pushes, pull requests, and release PRs; automatic releases require it to pass.
+Plain `cargo test` runs the library tests only. Integration tests require the corresponding client libraries (libpq, libmysqlclient, or SQLite). Server tests fail if their URL is missing or the server is unavailable. CI runs PostgreSQL 18, MySQL 8.4, and SQLite integration jobs on pushes and PRs, including release PRs; automatic releases require all three to pass.
 
 ## Releases
 

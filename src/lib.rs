@@ -1,4 +1,4 @@
-//! fastrace tracing for Diesel PostgreSQL queries.
+//! fastrace tracing for Diesel PostgreSQL, MySQL, and SQLite queries.
 //!
 //! Query spans record SQL and bind arguments in `db.query.text` using Diesel's display
 //! format by default. Use [`FastraceInstrumentation::with_query_capture`] to disable
@@ -11,6 +11,7 @@ use url::Url;
 
 /// Instruments one Diesel connection with OpenTelemetry-compatible fastrace query spans.
 pub struct FastraceInstrumentation {
+    backend: Backend,
     capture_queries: bool,
     active_connection: Option<Span>,
     active_query: Option<Span>,
@@ -19,14 +20,54 @@ pub struct FastraceInstrumentation {
     pending_transaction: Option<TransactionCommand>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Backend {
+    Postgres,
+    Mysql,
+    Sqlite,
+}
+
+impl Backend {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Postgres => "PostgreSQL",
+            Self::Mysql => "MySQL",
+            Self::Sqlite => "SQLite",
+        }
+    }
+
+    fn system(self) -> &'static str {
+        match self {
+            Self::Postgres => "postgresql",
+            Self::Mysql => "mysql",
+            Self::Sqlite => "sqlite",
+        }
+    }
+}
+
 impl FastraceInstrumentation {
     /// Creates PostgreSQL instrumentation from a connection URL without retaining credentials.
     pub fn postgres(database_url: &str) -> Self {
+        Self::new(Backend::Postgres, database_url)
+    }
+
+    /// Creates MySQL instrumentation from a connection URL without retaining credentials.
+    pub fn mysql(database_url: &str) -> Self {
+        Self::new(Backend::Mysql, database_url)
+    }
+
+    /// Creates SQLite instrumentation from a filename, file URI, or `:memory:`.
+    pub fn sqlite(database_url: &str) -> Self {
+        Self::new(Backend::Sqlite, database_url)
+    }
+
+    fn new(backend: Backend, database_url: &str) -> Self {
         Self {
+            backend,
             capture_queries: true,
             active_connection: None,
             active_query: None,
-            properties: postgres_properties(database_url, "QUERY"),
+            properties: database_properties(backend, database_url, "QUERY"),
             transactions: Vec::new(),
             pending_transaction: None,
         }
@@ -53,9 +94,9 @@ impl FastraceInstrumentation {
     }
 
     fn start_connection(&mut self, database_url: &str) {
-        self.properties = postgres_properties(database_url, "QUERY");
-        let span = Span::enter_with_local_parent("PostgreSQL connect");
-        let properties = postgres_properties(database_url, "CONNECT");
+        self.properties = database_properties(self.backend, database_url, "QUERY");
+        let span = Span::enter_with_local_parent(format!("{} connect", self.backend.name()));
+        let properties = database_properties(self.backend, database_url, "CONNECT");
         span.add_properties(move || properties);
         self.active_connection = Some(span);
     }
@@ -80,9 +121,9 @@ impl FastraceInstrumentation {
             .pending_transaction
             .map_or("QUERY", TransactionCommand::query_operation);
         let name = if operation == "QUERY" {
-            "PostgreSQL query".to_owned()
+            format!("{} query", self.backend.name())
         } else {
-            format!("PostgreSQL {operation}")
+            format!("{} {operation}", self.backend.name())
         };
         let span = if let Some(transaction) = self.transactions.last() {
             Span::enter_with_parent(name, &transaction.span)
@@ -122,9 +163,12 @@ impl FastraceInstrumentation {
         let command = TransactionCommand { action, depth };
         if action == TransactionAction::Begin {
             let span = if let Some(parent) = self.transactions.last() {
-                Span::enter_with_parent("PostgreSQL transaction", &parent.span)
+                Span::enter_with_parent(
+                    format!("{} transaction", self.backend.name()),
+                    &parent.span,
+                )
             } else {
-                Span::enter_with_local_parent("PostgreSQL transaction")
+                Span::enter_with_local_parent(format!("{} transaction", self.backend.name()))
             };
             let mut properties = properties_with_operation(&self.properties, "TRANSACTION");
             if let Some(kind) = properties
@@ -226,8 +270,25 @@ impl TransactionCommand {
 ///
 /// Installing a default is required to observe connection latency and failed connection attempts;
 /// calling `Connection::set_instrumentation` after `establish` is too late for those events.
+/// The default factory is global; use per-connection instrumentation for mixed backends.
 pub fn install_default_postgres_instrumentation() -> diesel::QueryResult<()> {
     set_default_instrumentation(|| Some(Box::new(FastraceInstrumentation::postgres_without_url())))
+}
+
+/// Installs instrumentation before Diesel establishes new MySQL connections.
+///
+/// Diesel's default instrumentation factory is global; installing this replaces any
+/// previously installed factory. For mixed backends, set instrumentation per connection.
+pub fn install_default_mysql_instrumentation() -> diesel::QueryResult<()> {
+    set_default_instrumentation(|| Some(Box::new(FastraceInstrumentation::mysql(""))))
+}
+
+/// Installs instrumentation before Diesel establishes new SQLite connections.
+///
+/// Diesel's default instrumentation factory is global; installing this replaces any
+/// previously installed factory. For mixed backends, set instrumentation per connection.
+pub fn install_default_sqlite_instrumentation() -> diesel::QueryResult<()> {
+    set_default_instrumentation(|| Some(Box::new(FastraceInstrumentation::sqlite(""))))
 }
 
 impl Instrumentation for FastraceInstrumentation {
@@ -260,7 +321,10 @@ impl Instrumentation for FastraceInstrumentation {
             InstrumentationEvent::CacheQuery { .. } => {
                 if let Some(span) = self.active_query.as_ref() {
                     span.add_property(|| ("db.query.prepared_cache_inserted", "true"));
-                    span.add_event(Event::new("PostgreSQL prepared statement cached"));
+                    span.add_event(Event::new(format!(
+                        "{} prepared statement cached",
+                        self.backend.name()
+                    )));
                 }
             }
             InstrumentationEvent::FinishQuery { error, .. } => self.finish_query(error),
@@ -294,15 +358,39 @@ fn properties_with_operation(
         .collect()
 }
 
-fn postgres_properties(database_url: &str, operation: &str) -> Vec<(&'static str, String)> {
+fn database_properties(
+    backend: Backend,
+    database_url: &str,
+    operation: &str,
+) -> Vec<(&'static str, String)> {
     let mut properties = vec![
         ("span.kind", "client".to_owned()),
         // Keep both the stable semantic-convention name and Uptrace's legacy-compatible key.
-        ("db.system.name", "postgresql".to_owned()),
-        ("db.system", "postgresql".to_owned()),
+        ("db.system.name", backend.system().to_owned()),
+        ("db.system", backend.system().to_owned()),
         // Diesel does not expose a structured operation for ordinary queries.
         ("db.operation.name", operation.to_owned()),
     ];
+
+    if backend == Backend::Sqlite {
+        // SQLite filenames and file URIs describe a local database, not a server.
+        let database = if let Some(path) = database_url.strip_prefix("file:") {
+            if path.starts_with("//") {
+                Url::parse(database_url)
+                    .ok()
+                    .map(|url| url.path().to_owned())
+            } else {
+                Some(path.split(['?', '#']).next().unwrap_or_default().to_owned())
+            }
+        } else {
+            Some(database_url.to_owned())
+        };
+        if let Some(database) = database.filter(|value| !value.is_empty()) {
+            properties.push(("db.namespace", database.clone()));
+            properties.push(("db.name", database));
+        }
+        return properties;
+    }
 
     let Ok(url) = Url::parse(database_url) else {
         return properties;
@@ -407,6 +495,46 @@ mod tests {
     use super::*;
 
     #[test]
+    fn mysql_metadata_uses_mysql_names_and_omits_url_credentials() {
+        let properties = database_properties(
+            Backend::Mysql,
+            "mysql://alice:secret@db.example:3306/catalog?ssl_key=private-key",
+            "QUERY",
+        );
+        for (key, value) in [
+            ("db.system.name", "mysql"),
+            ("db.namespace", "catalog"),
+            ("server.address", "db.example"),
+            ("server.port", "3306"),
+        ] {
+            assert!(properties.contains(&(key, value.to_owned())));
+        }
+        let formatted = format!("{properties:?}");
+        for excluded in ["alice", "secret", "private-key"] {
+            assert!(!formatted.contains(excluded));
+        }
+    }
+
+    #[test]
+    fn sqlite_metadata_accepts_paths_uris_and_memory_without_network_attributes() {
+        for (url, database) in [
+            (":memory:", ":memory:"),
+            ("relative.db", "relative.db"),
+            ("/tmp/example.db", "/tmp/example.db"),
+            (
+                "file:/tmp/example.db?mode=ro&cache=private",
+                "/tmp/example.db",
+            ),
+            ("file::memory:?cache=shared", ":memory:"),
+        ] {
+            let properties = database_properties(Backend::Sqlite, url, "CONNECT");
+            assert!(properties.contains(&("db.system.name", "sqlite".to_owned())));
+            assert!(properties.contains(&("db.namespace", database.to_owned())));
+            assert!(!properties.iter().any(|(key, _)| key.starts_with("server.")));
+        }
+    }
+
+    #[test]
     fn query_events_record_sql_and_arguments_on_each_span() {
         use diesel::pg::Pg;
         use diesel::sql_types::{Integer, Text};
@@ -492,8 +620,11 @@ mod tests {
 
     #[test]
     fn postgres_metadata_excludes_credentials_and_includes_graph_attributes() {
-        let properties =
-            postgres_properties("postgres://alice:secret@postgres:5433/example_db", "QUERY");
+        let properties = database_properties(
+            Backend::Postgres,
+            "postgres://alice:secret@postgres:5433/example_db",
+            "QUERY",
+        );
 
         assert!(properties.contains(&("span.kind", "client".to_owned())));
         assert!(properties.contains(&("db.system.name", "postgresql".to_owned())));
@@ -508,7 +639,7 @@ mod tests {
     #[test]
     fn invalid_url_still_classifies_postgresql_client_spans() {
         assert_eq!(
-            postgres_properties("not a URL", "QUERY"),
+            database_properties(Backend::Postgres, "not a URL", "QUERY"),
             vec![
                 ("span.kind", "client".to_owned()),
                 ("db.system.name", "postgresql".to_owned()),

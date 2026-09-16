@@ -39,6 +39,9 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      - name: Check shared integration suite formatting
+        run: rustfmt --edition 2024 --check tests/common/suite.rs
+
       - name: Run Clippy with all features
         run: cargo clippy --all-targets --all-features -- -D warnings
 
@@ -90,3 +93,42 @@ jobs:
         run: cargo clippy --locked --manifest-path tests/postgres/Cargo.toml --all-targets -- -D warnings
       - name: Run real Diesel PostgreSQL integration tests
         run: cargo test --locked --manifest-path tests/postgres/Cargo.toml
+
+  sqlite:
+    name: SQLite integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+      - run: cargo clippy --locked --manifest-path tests/sqlite/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --locked --manifest-path tests/sqlite/Cargo.toml
+
+  mysql:
+    name: MySQL integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: integration-test
+          MYSQL_DATABASE: diesel_fastrace_test
+          MYSQL_USER: tester
+          MYSQL_PASSWORD: integration-test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DIESEL_FASTRACE_TEST_MYSQL_URL: mysql://tester:integration-test@127.0.0.1:3306/diesel_fastrace_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: rustup toolchain install stable --profile minimal --component clippy,rustfmt
+      - run: sudo apt-get update && sudo apt-get install -y libmysqlclient-dev
+      - run: cargo clippy --locked --manifest-path tests/mysql/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --locked --manifest-path tests/mysql/Cargo.toml

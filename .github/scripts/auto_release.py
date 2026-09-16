@@ -7,7 +7,7 @@ import os
 import subprocess
 
 INTERVAL = timedelta(days=14)
-REQUIRED_JOBS = {"Quality", "Test", "PostgreSQL integration"}
+REQUIRED_JOBS = {"Quality", "Test", "PostgreSQL integration", "MySQL integration", "SQLite integration"}
 RELEASE_FILES = {"Cargo.toml", "Cargo.lock", "CHANGELOG.md"}
 
 
@@ -107,7 +107,7 @@ def main():
     jobs = (pages(f"{root}/actions/runs/{max(runs, key=lambda r: r['id'])['id']}/jobs", "jobs")
             if runs else [])
     if not ci_passed(runs, jobs):
-        print("Latest CI run must pass Quality, Test, and PostgreSQL integration")
+        print("Latest CI run must pass Quality, Test, and all database integration jobs")
         return
     # GITHUB_TOKEN PR events may have an approval-pending duplicate CI run.
     # The explicitly dispatched CI above must succeed on this exact head.
