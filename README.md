@@ -24,4 +24,4 @@ Release-plz creates release PRs; merging one publishes to crates.io and creates 
 
 Automation uses the repository GITHUB_TOKEN and explicitly dispatches CI and publishing workflows. No personal GitHub token is needed. The automatic release workflow defaults to a read-only preview when run manually.
 
-Publishing initially uses the repository secret `CARGO_REGISTRY_TOKEN`. After the first release, switch to crates.io trusted publishing: configure `codyps/diesel-fastrace`, workflow `release-plz.yml`, without an environment. The first release requires a crates.io API token (repository secret `CARGO_REGISTRY_TOKEN`) until the crate exists and a trusted publisher is configured; remove that secret and the `CARGO_REGISTRY_TOKEN` workflow environment entry afterward.
+Publishing uses crates.io trusted publishing (GitHub Actions OIDC), bound to `codyps/diesel-fastrace` and `.github/workflows/release-plz.yml`, with no GitHub environment. The publishing job has `id-token: write`; release-plz exchanges the job identity for a short-lived crates.io token. No `CARGO_REGISTRY_TOKEN` secret or environment variable is used.
